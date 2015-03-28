@@ -31,7 +31,7 @@ def get_cert_name_map(certs):
     for line in s:
         if line.startswith('SHA-1 hash:'):
             sha = line.split()[-1]
-        if '"labl"<blob>="' in line:
+        if '"labl"<blob>=' in line:
             name = line.split('=')[-1].strip('\n"')
             cert_map[sha] = name
 

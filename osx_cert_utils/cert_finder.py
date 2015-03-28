@@ -17,12 +17,12 @@ class CertFinder(object):
         self.remove_certs = dict()
         self.whitelist = dict()
 
-    def update_whitelist(self, cert_map):
+    def update_whitelist(self, certs):
         """Add certificates to the whitelist.
         Args:
-            cert_map: dict of SHA-1 and name to add
+            certs: dict of SHA-1 and name to add
         """
-        self.whitelist.update(cert_map)
+        self.whitelist.update(certs)
 
     def whitelist_netcraft(self):
         """Whitelist major certificates from Netcraft SSL survey."""
@@ -44,11 +44,11 @@ class CertFinder(object):
         """Generate the removal list.
         """
         all_certs = osx_cert_utils.get_all_certs()
-        cert_map = osx_cert_utils.get_cert_name_map(all_certs)
+        certs = osx_cert_utils.get_cert_name_map(all_certs)
 
-        for cert in cert_map:
+        for cert in certs:
             if cert not in self.whitelist:
-                self.remove_certs[cert] = cert_map[cert]
+                self.remove_certs[cert] = certs[cert]
 
     def generate_output(self, outfile, ansible_vars):
         """Generate the removal file.
@@ -61,8 +61,7 @@ class CertFinder(object):
             with open(outfile, 'w') as fp:
                 fp.write('certs:\n')
                 for cert in self.remove_certs:
-                    # str = ''.join(['    - ', cert, '  # ', cert_map[cert], '\n'])
-                    str = 'asdf'
+                    str = ''.join(['    - ', cert, '  # ', self.remove_certs[cert], '\n'])
                     fp.write(str)
         else:
             with open(outfile, 'w') as fp:

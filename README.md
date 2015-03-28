@@ -6,5 +6,5 @@ Tools to manage OS X SystemRootCertificates keychain
 Write Ansible vars file
 
 ```
-python cert_finder.py --whitelist-apple --outfile main.yml --ansible-vars --backup-outfile backup_certs
+python cert_finder.py --whitelist-apple --outfile main.yml --ansible-vars
 ```

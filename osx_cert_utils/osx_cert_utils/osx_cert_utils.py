@@ -71,7 +71,3 @@ def add_cert(cert_path):
     """
     add_cmd = shlex.split('security add-certificates -k /System/Library/Keychains/SystemRootCertificates.keychain {}'.format(cert_path))
     subprocess.check_call(add_cmd)
-
-
-def get_country(cert):
-    pass

@@ -40,12 +40,8 @@ class CertFinder(object):
         """Whitelist Apple certificates."""
         self.update_whitelist(cert_map.APPLE_CERTS)
 
-    def get_removal_list(self, outfile, ansible_vars):
-        """Generate the removal file.
-        Outputs dict or Ansible vars format.
-        Args:
-            outfile: path to write output file
-            ansible_vars: boolean to output as Ansible vars format
+    def generate_remove_list(self):
+        """Generate the removal list.
         """
         all_certs = osx_cert_utils.get_all_certs()
         cert_map = osx_cert_utils.get_cert_name_map(all_certs)
@@ -54,16 +50,50 @@ class CertFinder(object):
             if cert not in self.whitelist:
                 self.remove_certs[cert] = cert_map[cert]
 
+    def generate_output(self, outfile, ansible_vars):
+        """Generate the removal file.
+        Outputs dict or Ansible vars format.
+        Args:
+            outfile: path to write output file
+            ansible_vars: boolean to output as Ansible vars format
+        """
         if ansible_vars:
             with open(outfile, 'w') as fp:
                 fp.write('certs:\n')
                 for cert in self.remove_certs:
-                    fp.write(''.join(['    - ', cert, '  # ', cert_map[cert], '\n']))
+                    # str = ''.join(['    - ', cert, '  # ', cert_map[cert], '\n'])
+                    str = 'asdf'
+                    fp.write(str)
         else:
             with open(outfile, 'w') as fp:
                 pprint.pprint(self.remove_certs, fp)
 
-        print('Generated list of {} certs.'.format(len(self.remove_certs)))
+        print('Generated list of {} certs.\n'.format(len(self.remove_certs)))
+
+    def generate_backup(self, outfile):
+        """Generate the backup file.
+        Contains PEMs of certificates that will be removed.
+        Args:
+            outfile: path to write output file
+        """
+        backup_certs = 0
+        error_certs = 0
+        with open(outfile, 'w') as fp:
+            for cert in self.remove_certs:
+                try:
+                    cert = osx_cert_utils.get_cert(self.remove_certs[cert], True)
+                    fp.write(cert)
+                    backup_certs = backup_certs + 1
+                except subprocess.CalledProcessError as e:
+                    if e.returncode == 44:
+                        print('Failed to backup {} {}'.format(cert,
+                                                              self.remove_certs[cert]))
+                        error_certs = error_certs + 1
+                    else:
+                        raise
+
+        print('\nBacked up {} certs.'.format(backup_certs))
+        print('Failed to backup {} certs.'.format(error_certs))
 
 
 def parse_args():
@@ -86,6 +116,8 @@ def parse_args():
     parser.add_argument('--outfile',
                         required=True,
                         help='output filename')
+    parser.add_argument('--backup-outfile',
+                        help='output filename for backup of PEMs removed')
     return parser.parse_args()
 
 
@@ -108,7 +140,10 @@ def main():
     if args.whitelist_apple:
         cert_finder.whitelist_apple()
 
-    cert_finder.get_removal_list(args.outfile, args.ansible_vars)
+    cert_finder.generate_remove_list()
+    cert_finder.generate_output(args.outfile, args.ansible_vars)
+    if args.backup_outfile:
+        cert_finder.generate_backup(args.backup_outfile)
 
 
 if __name__ == '__main__':

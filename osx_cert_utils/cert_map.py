@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 Maps of cert SHA-1 fingerprint and cert name.
 """

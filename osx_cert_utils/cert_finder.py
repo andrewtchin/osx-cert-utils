@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 Find certificates in SystemRootCertificates keychain in OS X to remove.
 """

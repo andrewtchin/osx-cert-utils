@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 Utilities to manage the SystemRootCertificates keychain in OS X.
 """

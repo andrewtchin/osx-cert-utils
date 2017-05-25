@@ -2,6 +2,8 @@
 Utilities to manage the SystemRootCertificates keychain in OS X.
 """
 
+# import logging
+# import re
 import shlex
 import StringIO
 import subprocess
@@ -36,12 +38,42 @@ def get_cert_name_map(certs):
     return cert_map
 
 
+def normalize_cert_name(name):
+    """Try to format name so that `security find-certificate` will like it"""
+    '''
+    r = re.compile(r'0x[A-Za-z0-9]+ +"')
+    '''
+    parts = name.split()
+    # Drop tokens beginning with `0x`
+    for p in parts:
+        if p.startswith('0x'):
+            i = parts.index(p)
+            del(parts[i])
+
+    # Remove `"` from tokens
+    for p in parts:
+        if '"' in p:
+            i = parts.index(p)
+            parts[i] = p.strip('"')
+
+    # Remove tokens containing `\`
+    for p in parts:
+        if '\\' in p:
+            i = parts.index(p)
+            del(parts[i])
+    name = ' '.join(parts)
+    print('normalized name {}'.format(name))
+    return name
+
+
 def get_cert(name, pem=False):
     """Get the text output from 'security find-certificate' by name.
     Args:
         name: certificate name to search for
         pem: boolean output the cert as PEM format
     """
+    print('find-certificate: {}'.format(name))
+    name = normalize_cert_name(name)
     if pem:
         get_cert_cmd = shlex.split('security find-certificate -p -c {} /System/Library/Keychains/SystemRootCertificates.keychain'.format(name))
     else:

@@ -2,88 +2,60 @@
 Utilities to manage the SystemRootCertificates keychain in OS X.
 """
 
-# import logging
-# import re
 import shlex
 import StringIO
 import subprocess
 
-
-def get_all_certs():
-    """Return all certificates in the SystemRootCertificates keychain
-    with SHA-1 of each certificate.
-    """
-    all_certs_cmd = shlex.split('security find-certificate -a -Z /System/Library/Keychains/SystemRootCertificates.keychain')
-    output = subprocess.check_output(all_certs_cmd)
-    return output
+import OpenSSL
 
 
-def get_cert_name_map(certs):
-    """Map name to SHA-1 of each certificate.
-    Args:
-        certs: output from get_all_certs in format from 'security find-certificate'
-    """
+def get_all_certs_map():
+    """Map SHA-1 of each certificate to the PEM format x509 certificate"""
     cert_map = dict()
     sha = None
-    name = None
+    cert = ''
+
+    all_certs_cmd = shlex.split('security find-certificate -a -p -Z /System/Library/Keychains/SystemRootCertificates.keychain')
+    certs = subprocess.check_output(all_certs_cmd)
 
     s = StringIO.StringIO(certs)
     for line in s:
         if line.startswith('SHA-1 hash:'):
             sha = line.split()[-1]
-        if '"labl"<blob>=' in line:
-            name = line.split('=')[-1].strip('\n"')
-            cert_map[sha] = name
+        else:
+            cert = cert + line
+            if '-----END CERTIFICATE-----' in line:
+                cert_map[sha] = cert
+                sha = None
+                cert = ''
 
     return cert_map
 
 
-def normalize_cert_name(name):
-    """Try to format name so that `security find-certificate` will like it"""
-    '''
-    r = re.compile(r'0x[A-Za-z0-9]+ +"')
-    '''
-    parts = name.split()
-    # Drop tokens beginning with `0x`
-    for p in parts:
-        if p.startswith('0x'):
-            i = parts.index(p)
-            del(parts[i])
+def get_cert(name, certs=None):
+    """Get certificate by name search in OU or CN
 
-    # Remove `"` from tokens
-    for p in parts:
-        if '"' in p:
-            i = parts.index(p)
-            parts[i] = p.strip('"')
+    find-certificate -c only searches by CN but there are a few system roots without CN
 
-    # Remove tokens containing `\`
-    for p in parts:
-        if '\\' in p:
-            i = parts.index(p)
-            del(parts[i])
-    name = ' '.join(parts)
-    print('normalized name {}'.format(name))
-    return name
-
-
-def get_cert(name, pem=False):
-    """Get the text output from 'security find-certificate' by name.
     Args:
         name: certificate name to search for
-        pem: boolean output the cert as PEM format
+        certs: certificate map, calls `get_all_certs_map` if None
     """
-    print('find-certificate: {}'.format(name))
-    name = normalize_cert_name(name)
-    if pem:
-        get_cert_cmd = shlex.split('security find-certificate -p -c {} /System/Library/Keychains/SystemRootCertificates.keychain'.format(name))
-    else:
-        get_cert_cmd = shlex.split('security find-certificate -c {} /System/Library/Keychains/SystemRootCertificates.keychain'.format(name))
-    output = subprocess.check_output(get_cert_cmd)
-    return output
+    if not certs:
+        certs = get_all_certs_map()
+
+    cr = OpenSSL.crypto
+    for sha, cert in certs:
+        c = cr.load_certificate(cr.FILETYPE_PEM, cert)
+        s = c.get_subject().get_components()
+        for p in s:
+            if name in p[1]:
+                return cert
 
 
 def pem_to_der(infile_path, outfile_path):
     """Convert PEM format to DER format.
+
     Args:
         infile_path: path to input PEM file
         outfile_path: path to output DER file
@@ -94,10 +66,22 @@ def pem_to_der(infile_path, outfile_path):
 
 def add_cert(cert_path):
     """Add a certificate to the SystemRootCertificates keychain.
+
     Input must be in DER format.
     Requires root privileges.
+
     Args:
         cert_path: path to input der file
     """
     add_cmd = shlex.split('security add-certificates -k /System/Library/Keychains/SystemRootCertificates.keychain {}'.format(cert_path))
     subprocess.check_call(add_cmd)
+
+
+def remove_cert(sha1):
+    """Remove a certificate with matching SHA1
+
+    Args:
+        sha1: SHA1 hash of the certificate to remove
+    """
+    rm_cmd = shlex.split('security delete-certificate -Z {} /System/Library/Keychains/SystemRootCertificates.keychain'.format(sha1))
+    subprocess.check_call(rm_cmd)

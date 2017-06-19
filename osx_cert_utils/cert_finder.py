@@ -3,9 +3,9 @@ Find certificates in SystemRootCertificates keychain in OS X to remove.
 """
 
 import argparse
-# import logging
-import pprint
-import subprocess
+import datetime
+
+import OpenSSL
 
 import cert_constants
 import osx_cert_utils
@@ -18,6 +18,7 @@ class CertOps(object):
 
     def update_whitelist(self, certs):
         """Add certificates to the whitelist.
+
         Args:
             certs: dict of SHA-1 and name to add
         """
@@ -44,68 +45,57 @@ class CertOps(object):
         self.update_whitelist(cert_constants.ALEXA_1M_CERTS)
 
     def generate_remove_list(self):
-        """Generate the removal list.
-        """
-        all_certs = osx_cert_utils.get_all_certs()
-        certs = osx_cert_utils.get_cert_name_map(all_certs)
+        """Generate the removal list."""
+        certs = osx_cert_utils.get_all_certs_map()
         print('Found {} certs'.format(len(certs)))
 
-        for cert in certs:
-            if cert not in self.whitelist:
-                print('Adding cert to remove: {}'.format(certs[cert]))
-                self.remove_certs[cert] = certs[cert]
-            else:
-                print('Skipping whitelisted cert: {}'.format(certs[cert]))
+        cr = OpenSSL.crypto
+        for sha in certs:
+            c = cr.load_certificate(cr.FILETYPE_PEM, certs[sha])
+            s = c.get_subject().get_components()
+            print('{}'.format(s))
 
-    def generate_output(self, outfile, ansible_vars):
-        """Generate the removal file.
-        Outputs dict or Ansible vars format.
+            if sha not in self.whitelist:
+                print('Adding cert to remove: {} {}'.format(sha, s))
+                self.remove_certs[sha] = certs[sha]
+            else:
+                print('Skipping whitelisted cert: {} {}'.format(sha, s))
+
+    def generate_ansible_vars(self, outfile):
+        """Generate the removal file in Ansible vars format.
+
         Args:
             outfile: path to write output file
-            ansible_vars: boolean to output as Ansible vars format
         """
-        outfile = '-'.join([outfile, '.dat'])
-        if ansible_vars:
-            with open(outfile, 'w') as fp:
-                fp.write('certs:\n')
-                for cert in self.remove_certs:
-                    str = ''.join(['    - ', cert, '  # ', self.remove_certs[cert], '\n'])
-                    fp.write(str)
-        else:
-            with open(outfile, 'w') as fp:
-                pprint.pprint(self.remove_certs, fp)
+        cr = OpenSSL.crypto
+        with open(outfile, 'w') as fp:
+            fp.write('certs:\n')
+            for sha in self.remove_certs:
+                c = cr.load_certificate(cr.FILETYPE_PEM, self.remove_certs[sha])
+                s = c.get_subject().get_components()
+                st = ''.join(['    - ', sha, '  # ', repr(s), '\n'])
+                fp.write(st)
 
-        print('Generated list of {} certs.\n'.format(len(self.remove_certs)))
+        print('Generated list of {} certs: {}\n'.format(len(self.remove_certs), outfile))
 
-    def generate_backup(self, outfile):
+    def generate_backup(self, cert_map, outfile):
         """Generate the backup file.
+
         Contains PEMs of certificates that will be removed.
+
         Args:
+            cert_map: map of sha1:pem cert
             outfile: path to write output file
         """
         backup_certs = 0
         error_certs = 0
-        # TODO add timestamp
-        outfile = '-'.join([outfile, '.bak'])
         with open(outfile, 'w') as fp:
-            for cert in self.remove_certs:
-                try:
-                    # logging.info("Backing up %s", cert)
-                    print("Backing up {}".format(cert))
-                    cert = osx_cert_utils.get_cert(self.remove_certs[cert], True)
-                    fp.write(cert)
-                    backup_certs = backup_certs + 1
-                except subprocess.CalledProcessError as e:
-                    if e.returncode == 44:
-                        # logging.error('Failed to backup fingerptint: %s name: %s', cert,
-                        #              self.remove_certs[cert])
-                        print('---------------------------------')
-                        print('Failed to backup fingerptint: {} name: {}'.format(cert,
-                                      self.remove_certs[cert]))
-                        print('---------------------------------')
-                        error_certs = error_certs + 1
-                    else:
-                        raise
+            for sha in cert_map:
+                print("Backing up {}".format(sha))
+                fp.write(sha)
+                fp.write('\n')
+                fp.write(cert_map[sha])
+                backup_certs = backup_certs + 1
 
         print('\nBacked up {} certs.'.format(backup_certs))
         print('Failed to backup {} certs.'.format(error_certs))
@@ -128,9 +118,9 @@ def parse_args():
     parser.add_argument('--whitelist-alexa',
                         action='store_true',
                         help='whitelist CAs for all Alexa 1M.')
-    parser.add_argument('--ansible-vars',
+    parser.add_argument('--remove',
                         action='store_true',
-                        help='output hashes in format for Ansible vars file')
+                        help='remove the CAs in the remove list from the root store.')
     parser.add_argument('--outfile',
                         required=True,
                         help='output basename for removal list and backup')
@@ -143,8 +133,8 @@ def main():
     Use whitelist options to prevent removal of certain lists.
     Blacklist options will override certificate list generated by whitelist options.
     """
-    # logging.basicConfig(level=logging.DEBUG)
     args = parse_args()
+    ts = datetime.datetime.now().strftime('%Y%m%d')
 
     certs = CertOps()
 
@@ -159,9 +149,28 @@ def main():
     if args.whitelist_alexa:
         certs.whitelist_alexa()
 
+    # backup all certs
+    o = '-'.join([args.outfile, 'all', ts]) + '.bak'
+    certs.generate_backup(osx_cert_utils.get_all_certs_map(), o)
+    print('Backup all certs complete')
+
     certs.generate_remove_list()
-    certs.generate_output(args.outfile, args.ansible_vars)
-    certs.generate_backup(args.outfile)
+
+    # backup remove certs
+    o = '-'.join([args.outfile, 'remove', ts]) + '.bak'
+    certs.generate_backup(certs.remove_certs, o)
+    print('Backup remove certs complete')
+
+    # output hashes in format for Ansible vars file
+    o = '-'.join([args.outfile, ts]) + '.yml'
+    certs.generate_ansible_vars(o)
+
+    # remove the certificates
+    if args.remove:
+        print('Remove selected certificates')
+        for c in certs.remove_certs:
+            osx_cert_utils.remove_cert(c)
+            print('Removed {}'.format(c))
 
 
 if __name__ == '__main__':

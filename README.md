@@ -6,9 +6,9 @@ Tools to manage OS X SystemRootCertificates keychain
 
 Use `cert_finder.py` to generate a list of root CAs to remove from system's trusted roots. You
 can use a predefined whitelist to determine which certificates to remove or generate your own
-whitelist using (go-tls-scraper)[https://github.com/andrewtchin/go-tls-scraper]. 
+whitelist using [go-tls-scraper](https://github.com/andrewtchin/go-tls-scraper). 
 Your list of certificates to remove can then be used with
-(ansible-osx-remove-root-ca)[https://github.com/andrewtchin/ansible-osx-remove-root-ca]. 
+[ansible-osx-remove-root-ca](https://github.com/andrewtchin/ansible-osx-remove-root-ca). 
 
 
 ## Generate a list of certificates to remove
@@ -42,7 +42,7 @@ apple-remove-20170618.bak  # Backup of roots that will be removed
 
 ## Generate your own whitelist
 
-You can generate whitelist of certificates to remove by providing a list of domains to whitelist to (go-tls-scraper)[https://github.com/andrewtchin/go-tls-scraper] which will determine the root certificate used by each site. 
+You can generate whitelist of certificates to remove by providing a list of domains to whitelist to [go-tls-scraper](https://github.com/andrewtchin/go-tls-scraper) which will determine the root certificate used by each site. 
 
 
 ## Restore backup
